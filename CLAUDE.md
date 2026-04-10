@@ -50,6 +50,10 @@ E2E tests (`test/e2e/`): Run against real Postgres+pgvector. Require `DATABASE_U
 - `bun run test:e2e` runs Tier 1 (mechanical, all operations, no API keys)
 - `test/e2e/upgrade.test.ts` runs check-update E2E against real GitHub API (network required)
 - Tier 2 (`skills.test.ts`) requires OpenClaw + API keys, runs nightly in CI
+  - Docker harness (recommended): `bun run test:e2e:skills` then `bun run test:e2e:skills:down`
+  - This builds a container with OpenClaw + gbrain, stands up Postgres, configures the
+    MCP server, runs skill tests, and tears everything down. Requires `.env.testing`
+    with `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`.
 - If `.env.testing` doesn't exist in this directory, check sibling worktrees for one:
   `find ../  -maxdepth 2 -name .env.testing -print -quit` and copy it here if found.
 - Always run E2E tests when they exist. Do not skip them just because DATABASE_URL

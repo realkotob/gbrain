@@ -19,6 +19,8 @@
     "build:all": "bun build --compile --target=bun-darwin-arm64 --outfile bin/gbrain-darwin-arm64 src/cli.ts && bun build --compile --target=bun-linux-x64 --outfile bin/gbrain-linux-x64 src/cli.ts",
     "test": "bun test",
     "test:e2e": "bun test test/e2e/",
+    "test:e2e:skills": "docker compose -f docker-compose.e2e.yml run --rm skills-test",
+    "test:e2e:skills:down": "docker compose -f docker-compose.e2e.yml down -v",
     "prepublish:clawhub": "bun run build:all",
     "publish:clawhub": "clawhub package publish . --family bundle-plugin"
   },

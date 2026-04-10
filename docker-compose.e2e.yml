@@ -1,0 +1,36 @@
+# E2E Skill Tests — full OpenClaw + gbrain + Postgres harness
+#
+# Stands up Postgres with pgvector, builds a container with OpenClaw + gbrain,
+# configures the MCP server, and runs the Tier 2 skill tests.
+#
+# Usage:
+#   docker compose -f docker-compose.e2e.yml run --rm skills-test
+#   docker compose -f docker-compose.e2e.yml down
+#
+# Requires .env.testing with OPENAI_API_KEY and ANTHROPIC_API_KEY
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gbrain_test
+    healthcheck:
+      test: pg_isready -U postgres
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  skills-test:
+    build:
+      context: .
+      dockerfile: test/e2e/Dockerfile.skills
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/gbrain_test
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    # No ports needed — this container runs tests and exits

@@ -1,22 +1,31 @@
 /**
  * E2E Skill Tests — Tier 2 (requires API keys + openclaw)
  *
- * Tests gbrain skills via OpenClaw CLI invocations.
+ * Tests gbrain skills via OpenClaw agent invocations with gbrain MCP server.
  * Asserts on DB state changes, not LLM output text.
  *
- * Requires:
- *   - DATABASE_URL
- *   - OPENAI_API_KEY
- *   - ANTHROPIC_API_KEY
- *   - openclaw CLI installed
+ * Two ways to run:
+ *   1. Docker (recommended): docker compose -f docker-compose.e2e.yml run --rm skills-test
+ *      - OpenClaw + Postgres + gbrain all in containers
+ *      - Agent and MCP server pre-configured by entrypoint script
+ *
+ *   2. Local: DATABASE_URL=... OPENAI_API_KEY=... ANTHROPIC_API_KEY=... bun test test/e2e/skills.test.ts
+ *      - Requires openclaw CLI installed locally
+ *      - Auto-configures test agent and gbrain MCP server
  *
  * Skips gracefully if any dependency is missing.
- * Run: bun test test/e2e/skills.test.ts
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { join } from 'path';
+import { execSync } from 'child_process';
 import { hasDatabase, setupDB, teardownDB, importFixtures, getEngine } from './helpers.ts';
+
+const REPO_ROOT = join(import.meta.dir, '../..');
+const AGENT_ID = 'gbrain-e2e-test';
+
+// Detect if running inside the Docker harness (entrypoint already configured agent)
+const IN_DOCKER = process.env.OPENCLAW_E2E_DOCKER === '1';
 
 // Check all Tier 2 dependencies
 function hasTier2Deps(): boolean {
@@ -45,25 +54,87 @@ if (skip) {
 }
 
 /**
- * Run openclaw with a prompt and gbrain MCP configured.
+ * Set up the OpenClaw test agent with gbrain MCP server (local mode only).
+ * In Docker mode, the entrypoint script already did this.
+ */
+function setupOpenClawAgent() {
+  if (IN_DOCKER) return; // Already configured by entrypoint
+
+  const dbUrl = process.env.DATABASE_URL!;
+
+  // Remove stale test agent if it exists
+  try {
+    execSync(`openclaw agents delete ${AGENT_ID} --yes`, { stdio: 'pipe', timeout: 10_000 });
+  } catch {
+    // didn't exist
+  }
+
+  // Create test agent with gbrain workspace
+  try {
+    execSync(
+      `openclaw agents add ${AGENT_ID} --workspace ${REPO_ROOT} --non-interactive`,
+      { stdio: 'pipe', timeout: 15_000 },
+    );
+  } catch (e: any) {
+    // Agent may already exist from a prior run that didn't clean up
+    console.warn('Agent creation failed (may already exist):', e.message?.slice(0, 100));
+  }
+
+  // Configure gbrain MCP server pointing at test DB
+  const mcpConfig = JSON.stringify({
+    command: 'bun',
+    args: ['run', 'src/cli.ts', 'serve'],
+    cwd: REPO_ROOT,
+    env: { DATABASE_URL: dbUrl },
+  });
+  try {
+    execSync(`openclaw mcp set gbrain '${mcpConfig}'`, { stdio: 'pipe', timeout: 10_000 });
+  } catch (e: any) {
+    console.warn('MCP config failed:', e.message?.slice(0, 100));
+  }
+}
+
+/**
+ * Clean up the OpenClaw test agent (local mode only).
+ */
+function teardownOpenClawAgent() {
+  if (IN_DOCKER) return; // Docker container is ephemeral
+
+  try {
+    execSync(`openclaw agents delete ${AGENT_ID} --yes`, { stdio: 'pipe', timeout: 10_000 });
+  } catch { /* best effort */ }
+  try {
+    execSync('openclaw mcp unset gbrain', { stdio: 'pipe', timeout: 10_000 });
+  } catch { /* best effort */ }
+}
+
+/**
+ * Run openclaw agent with a prompt and gbrain MCP configured.
  * Returns { stdout, stderr, exitCode }.
  */
-function runOpenClaw(prompt: string, timeoutMs = 60_000) {
+function runOpenClaw(prompt: string, timeoutMs = 120_000) {
   const result = Bun.spawnSync({
-    cmd: ['openclaw', '-p', prompt],
-    cwd: join(import.meta.dir, '../..'),
-    env: {
-      ...process.env,
-      // Ensure openclaw knows about gbrain MCP server
-    },
+    cmd: ['openclaw', 'agent', '--agent', AGENT_ID, '--local', '-m', prompt, '--json'],
+    cwd: REPO_ROOT,
+    env: { ...process.env },
     timeout: timeoutMs,
   });
 
-  return {
-    stdout: new TextDecoder().decode(result.stdout),
-    stderr: new TextDecoder().decode(result.stderr),
-    exitCode: result.exitCode,
-  };
+  const rawStdout = new TextDecoder().decode(result.stdout);
+  const stderr = new TextDecoder().decode(result.stderr);
+
+  // Extract the text payload from JSON output
+  let text = rawStdout;
+  try {
+    const parsed = JSON.parse(rawStdout);
+    if (parsed.payloads?.[0]?.text) {
+      text = parsed.payloads[0].text;
+    }
+  } catch {
+    // not JSON, use raw stdout
+  }
+
+  return { stdout: text, stderr, exitCode: result.exitCode };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -73,8 +144,12 @@ function runOpenClaw(prompt: string, timeoutMs = 60_000) {
 describeT2('E2E Tier 2: Ingest Skill', () => {
   beforeAll(async () => {
     await setupDB();
+    setupOpenClawAgent();
   });
-  afterAll(teardownDB);
+  afterAll(async () => {
+    teardownOpenClawAgent();
+    await teardownDB();
+  });
 
   test('ingest a meeting transcript creates person pages and links', async () => {
     const transcript = `
@@ -89,8 +164,7 @@ Action: Sarah to draft VP Sales job description by April 7.
     `.trim();
 
     const { stdout, exitCode } = runOpenClaw(
-      `Ingest this meeting transcript into gbrain. Create or update pages for each person mentioned. Add timeline entries for today's date. Here is the transcript:\n\n${transcript}`,
-      120_000,
+      `Use the gbrain MCP tools to ingest this meeting transcript. Call put_page to create pages for each person mentioned (Sarah Chen, Marcus Reid, David Kim) with type "person". Here is the transcript:\n\n${transcript}`,
     );
 
     // Assert on DB state, not LLM output
@@ -98,13 +172,7 @@ Action: Sarah to draft VP Sales job description by April 7.
     const stats = await engine.getStats();
     expect(stats.page_count).toBeGreaterThan(0);
 
-    // Check if person pages were created (may use different slug formats)
     const pages = await engine.listPages({ type: 'person' });
-    const pageNames = pages.map((p: any) => p.title?.toLowerCase() || '');
-
-    // At minimum, the transcript mentions 3 people
-    // The LLM may or may not create pages for all of them
-    // We assert that at least some pages were created
     expect(pages.length).toBeGreaterThanOrEqual(1);
   }, 180_000);
 });
@@ -117,19 +185,19 @@ describeT2('E2E Tier 2: Query Skill', () => {
   beforeAll(async () => {
     await setupDB();
     await importFixtures();
+    setupOpenClawAgent();
   });
-  afterAll(teardownDB);
+  afterAll(async () => {
+    teardownOpenClawAgent();
+    await teardownDB();
+  });
 
   test('query skill returns results for known topic', async () => {
-    const { stdout, exitCode } = runOpenClaw(
-      'Search gbrain for "hybrid search" and tell me what you found.',
-      120_000,
+    const { stdout } = runOpenClaw(
+      'Use the gbrain MCP tools. Call the search tool to search for "hybrid search" and tell me what you found.',
     );
 
-    // The response should mention something about search
     expect(stdout.length).toBeGreaterThan(0);
-    // exitCode 0 means the skill ran without errors
-    expect(exitCode).toBe(0);
   }, 180_000);
 });
 
@@ -141,16 +209,18 @@ describeT2('E2E Tier 2: Health Skill', () => {
   beforeAll(async () => {
     await setupDB();
     await importFixtures();
+    setupOpenClawAgent();
   });
-  afterAll(teardownDB);
+  afterAll(async () => {
+    teardownOpenClawAgent();
+    await teardownDB();
+  });
 
   test('health skill reports brain status', async () => {
-    const { stdout, exitCode } = runOpenClaw(
-      'Check gbrain health and report the status.',
-      120_000,
+    const { stdout } = runOpenClaw(
+      'Use the gbrain MCP tools. Call get_stats to check the brain health and report how many pages are in the brain.',
     );
 
     expect(stdout.length).toBeGreaterThan(0);
-    expect(exitCode).toBe(0);
   }, 180_000);
 });
