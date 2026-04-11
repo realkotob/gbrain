@@ -7,15 +7,21 @@ category: sense
 requires: []
 secrets:
   - name: CLAWVISOR_URL
-    description: ClawVisor gateway URL (or any credential gateway with Gmail access)
-    where: https://clawvisor.com — create an agent, copy the gateway URL
+    description: ClawVisor gateway URL (Option A — recommended, handles OAuth for you)
+    where: https://clawvisor.com — create an agent, activate Gmail service
   - name: CLAWVISOR_AGENT_TOKEN
-    description: ClawVisor agent token for authenticated requests
+    description: ClawVisor agent token (Option A)
     where: https://clawvisor.com — agent settings, copy the agent token
+  - name: GOOGLE_CLIENT_ID
+    description: Google OAuth2 client ID (Option B — direct Gmail API access)
+    where: https://console.cloud.google.com/apis/credentials — create OAuth 2.0 Client ID
+  - name: GOOGLE_CLIENT_SECRET
+    description: Google OAuth2 client secret (Option B)
+    where: https://console.cloud.google.com/apis/credentials — same page as client ID
 health_checks:
-  - "curl -sf $CLAWVISOR_URL/health > /dev/null && echo 'ClawVisor: OK' || echo 'ClawVisor: FAIL'"
+  - "[ -n \"$CLAWVISOR_URL\" ] && curl -sf $CLAWVISOR_URL/health > /dev/null && echo 'ClawVisor: OK' || [ -n \"$GOOGLE_CLIENT_ID\" ] && echo 'Google OAuth: configured' || echo 'No email auth configured'"
 setup_time: 20 min
-cost_estimate: "$0 (ClawVisor free tier covers personal email)"
+cost_estimate: "$0 (both options are free)"
 ---
 
 # Email-to-Brain: Gmail Messages That Update Your Brain
@@ -101,7 +107,7 @@ Ask the user: "How do you access Gmail programmatically? Options:
 2. Google OAuth credentials (you manage tokens yourself)
 3. Hermes Gateway (if you're using Hermes Agent)"
 
-**If ClawVisor:**
+#### Option A: ClawVisor (recommended)
 
 Tell the user:
 "I need your ClawVisor URL and agent token.
@@ -119,7 +125,47 @@ Validate:
 curl -sf "$CLAWVISOR_URL/health" && echo "PASS: ClawVisor reachable" || echo "FAIL"
 ```
 
-**STOP until credential gateway validates.**
+**STOP until ClawVisor validates.**
+
+#### Option B: Google OAuth2 directly
+
+Tell the user:
+"I need Google OAuth2 credentials for Gmail access. Here's how:
+
+1. Go to https://console.cloud.google.com/apis/credentials
+   (create a Google Cloud project if you don't have one)
+2. Click **'+ CREATE CREDENTIALS'** > **'OAuth client ID'**
+3. If prompted, configure the OAuth consent screen:
+   - User type: **External** (or Internal for Google Workspace)
+   - App name: 'GBrain Email' (anything works)
+   - Scopes: add **'Gmail API .../auth/gmail.readonly'**
+   - Test users: add your own email address
+4. Create the OAuth client ID:
+   - Application type: **Desktop app**
+   - Name: 'GBrain'
+5. Copy the **Client ID** and **Client Secret**
+6. Also enable the Gmail API:
+   Go to https://console.cloud.google.com/apis/library/gmail.googleapis.com
+   Click **'Enable'**"
+
+Validate:
+```bash
+[ -n "$GOOGLE_CLIENT_ID" ] && [ -n "$GOOGLE_CLIENT_SECRET" ] \
+  && echo "PASS: Google OAuth credentials set" \
+  || echo "FAIL: Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET"
+```
+
+Then run the OAuth flow to get tokens:
+```bash
+# The collector script handles the OAuth flow:
+# 1. Opens browser to Google consent URL with gmail.readonly scope
+# 2. User grants access
+# 3. Script receives auth code, exchanges for access + refresh token
+# 4. Stores tokens in ~/.gbrain/google-tokens.json
+# 5. Auto-refreshes on expiry
+```
+
+**STOP until OAuth flow completes and tokens are stored.**
 
 ### Step 2: Set Up the Email Collector
 
