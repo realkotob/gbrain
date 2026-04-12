@@ -70,8 +70,8 @@ All notable changes to GBrain will be documented in this file.
   uploaded, source_url, type).
 - **All skills** updated to reference actual `gbrain files` commands instead of
   theoretical patterns.
-- **Back-link enforcer closes the loop.** `gbrain backlinks check` scans your
-  brain for entity mentions without back-links. `gbrain backlinks fix` creates
+- **Back-link enforcer closes the loop.** `gbrain check-backlinks check` scans your
+  brain for entity mentions without back-links. `gbrain check-backlinks fix` creates
   them. The Iron Law of Back-Linking is in every skill, now the code enforces it.
 
 - **Page linter catches LLM slop.** `gbrain lint` flags "Of course! Here is..."
