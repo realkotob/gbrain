@@ -242,7 +242,7 @@ describe('url_reachable resolver', () => {
   });
 
   test('200 response → reachable=true', async () => {
-    globalThis.fetch = (async () => new Response('', { status: 200 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response('', { status: 200 })) as unknown as typeof fetch;
     const r = await urlReachableResolver.resolve({
       input: { url: 'https://example.com/ok' },
       context: makeCtx(),
@@ -252,7 +252,7 @@ describe('url_reachable resolver', () => {
   });
 
   test('404 response → reachable=false with status + reason', async () => {
-    globalThis.fetch = (async () => new Response('', { status: 404 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response('', { status: 404 })) as unknown as typeof fetch;
     const r = await urlReachableResolver.resolve({
       input: { url: 'https://example.com/dead' },
       context: makeCtx(),
@@ -268,7 +268,7 @@ describe('url_reachable resolver', () => {
       callCount++;
       if (init?.method === 'HEAD') return new Response('', { status: 405 });
       return new Response('ok', { status: 200 });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     const r = await urlReachableResolver.resolve({
       input: { url: 'https://example.com/post-only' },
       context: makeCtx(),
@@ -283,7 +283,7 @@ describe('url_reachable resolver', () => {
       new Response('', { status: 200 }),
     ];
     let i = 0;
-    globalThis.fetch = (async () => responses[i++]) as typeof fetch;
+    globalThis.fetch = (async () => responses[i++]) as unknown as typeof fetch;
     const r = await urlReachableResolver.resolve({
       input: { url: 'https://example.com/redirect' },
       context: makeCtx(),
@@ -296,7 +296,7 @@ describe('url_reachable resolver', () => {
     globalThis.fetch = (async () => new Response('', {
       status: 302,
       headers: { location: 'http://127.0.0.1/admin' },
-    })) as typeof fetch;
+    })) as unknown as typeof fetch;
     const r = await urlReachableResolver.resolve({
       input: { url: 'https://example.com/redirects-to-local' },
       context: makeCtx(),
@@ -306,7 +306,7 @@ describe('url_reachable resolver', () => {
   });
 
   test('fetch network failure → reachable=false, confidence=1', async () => {
-    globalThis.fetch = (async () => { throw new TypeError('fetch failed'); }) as typeof fetch;
+    globalThis.fetch = (async () => { throw new TypeError('fetch failed'); }) as unknown as typeof fetch;
     const r = await urlReachableResolver.resolve({
       input: { url: 'https://nonexistent.example/' },
       context: makeCtx(),
@@ -338,7 +338,7 @@ describe('url_reachable resolver', () => {
       const err = new Error('aborted');
       err.name = 'AbortError';
       throw err;
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     ac.abort();
     try {
       await urlReachableResolver.resolve({
@@ -475,7 +475,7 @@ describe('x_handle_to_tweet resolver', () => {
     globalThis.fetch = (async () => new Response(JSON.stringify({ data: [], meta: { result_count: 0 } }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
-    })) as typeof fetch;
+    })) as unknown as typeof fetch;
     const r = await xHandleToTweetResolver.resolve({
       input: { handle: 'garrytan', keywords: 'nothing matches' },
       context: makeCtx(),
@@ -491,7 +491,7 @@ describe('x_handle_to_tweet resolver', () => {
       data: [
         { id: '123', text: 'talking about building gbrain today', created_at: '2026-04-18T00:00:00Z' },
       ],
-    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch;
     const r = await xHandleToTweetResolver.resolve({
       input: { handle: 'garrytan', keywords: 'building gbrain' },
       context: makeCtx(),
@@ -505,7 +505,7 @@ describe('x_handle_to_tweet resolver', () => {
     process.env.X_API_BEARER_TOKEN = 'fake';
     globalThis.fetch = (async () => new Response(JSON.stringify({
       data: [{ id: '1', text: 'something unrelated entirely', created_at: '2026-04-18T00:00:00Z' }],
-    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch;
     const r = await xHandleToTweetResolver.resolve({
       input: { handle: 'garrytan', keywords: 'gbrain knowledge runtime specific terms' },
       context: makeCtx(),
@@ -523,7 +523,7 @@ describe('x_handle_to_tweet resolver', () => {
     }));
     globalThis.fetch = (async () => new Response(JSON.stringify({ data }), {
       status: 200, headers: { 'content-type': 'application/json' },
-    })) as typeof fetch;
+    })) as unknown as typeof fetch;
     const r = await xHandleToTweetResolver.resolve({
       input: { handle: 'garrytan', keywords: 'completely different signal words unlikely to match' },
       context: makeCtx(),
@@ -535,7 +535,7 @@ describe('x_handle_to_tweet resolver', () => {
 
   test('401 → ResolverError(auth)', async () => {
     process.env.X_API_BEARER_TOKEN = 'fake';
-    globalThis.fetch = (async () => new Response('unauthorized', { status: 401 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response('unauthorized', { status: 401 })) as unknown as typeof fetch;
     try {
       await xHandleToTweetResolver.resolve({
         input: { handle: 'garrytan' },
@@ -549,7 +549,7 @@ describe('x_handle_to_tweet resolver', () => {
 
   test('403 → ResolverError(auth)', async () => {
     process.env.X_API_BEARER_TOKEN = 'fake';
-    globalThis.fetch = (async () => new Response('forbidden', { status: 403 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response('forbidden', { status: 403 })) as unknown as typeof fetch;
     try {
       await xHandleToTweetResolver.resolve({
         input: { handle: 'garrytan' },
@@ -563,7 +563,7 @@ describe('x_handle_to_tweet resolver', () => {
 
   test('500 → ResolverError(upstream) with body snippet', async () => {
     process.env.X_API_BEARER_TOKEN = 'fake';
-    globalThis.fetch = (async () => new Response('internal err', { status: 500 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response('internal err', { status: 500 })) as unknown as typeof fetch;
     try {
       await xHandleToTweetResolver.resolve({
         input: { handle: 'garrytan' },
@@ -582,7 +582,7 @@ describe('x_handle_to_tweet resolver', () => {
     globalThis.fetch = (async () => {
       calls++;
       return new Response('rate', { status: 429, headers: { 'retry-after': '0' } });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     try {
       await xHandleToTweetResolver.resolve({
         input: { handle: 'garrytan' },
@@ -603,7 +603,7 @@ describe('x_handle_to_tweet resolver', () => {
       return new Response(JSON.stringify({ data: [] }), {
         status: 200, headers: { 'content-type': 'application/json' },
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     await xHandleToTweetResolver.resolve({
       input: { handle: 'garrytan', keywords: 'from:evil_user lang:ja to:someone normal words' },
       context: makeCtx(),
@@ -618,5 +618,100 @@ describe('x_handle_to_tweet resolver', () => {
     expect(query).not.toContain('to:someone');
     expect(query).toContain('normal');
     expect(query).toContain('words');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Structural array-items guard for resolver inputSchema + outputSchema.
+//
+// v0.34 fix wave: handle_to_tweet's `candidates` field shipped as bare
+// `type: 'array'` without `items` (caught by community PR #910). Same
+// bug class as extract_facts.entity_hints, different surface. Resolvers
+// don't ride through buildToolDefs so the MCP-side structural guard
+// doesn't see them.
+//
+// This guard walks the builtin resolvers explicitly (NOT via
+// getDefaultRegistry(), which starts empty until commands/resolvers.ts
+// registers — codex catch). Both inputSchema AND outputSchema are
+// checked because resolvers are bidirectional.
+// ---------------------------------------------------------------------------
+
+interface SchemaNode {
+  type?: unknown;
+  properties?: Record<string, SchemaNode>;
+  items?: SchemaNode;
+  [k: string]: unknown;
+}
+
+function findArrayWithoutItems(node: SchemaNode | undefined, path: string[]): string[] {
+  const violations: string[] = [];
+  if (!node || typeof node !== 'object') return violations;
+  if (node.type === 'array') {
+    if (!node.items || typeof node.items !== 'object') {
+      violations.push(`${path.join('.') || '<root>'} (array missing items)`);
+    } else if (!('type' in node.items)) {
+      violations.push(`${path.join('.') || '<root>'}.items (items missing type)`);
+    } else {
+      violations.push(...findArrayWithoutItems(node.items, [...path, 'items']));
+    }
+  }
+  if (node.properties && typeof node.properties === 'object') {
+    for (const [k, child] of Object.entries(node.properties)) {
+      violations.push(...findArrayWithoutItems(child as SchemaNode, [...path, k]));
+    }
+  }
+  return violations;
+}
+
+describe('builtin resolver schemas — structural array-items guard', () => {
+  // Explicit-import list. getDefaultRegistry() returns an empty registry
+  // until commands/resolvers.ts registers, so walking it would silently
+  // pass with zero resolvers visited (codex finding).
+  const builtins = [
+    { name: 'url_reachable', resolver: urlReachableResolver },
+    { name: 'x_handle_to_tweet', resolver: xHandleToTweetResolver },
+  ];
+
+  for (const { name, resolver } of builtins) {
+    test(`${name}: inputSchema has no bare arrays`, () => {
+      const violations = findArrayWithoutItems(
+        resolver.inputSchema as SchemaNode | undefined,
+        [name, 'inputSchema'],
+      );
+      expect(violations).toEqual([]);
+    });
+
+    test(`${name}: outputSchema has no bare arrays`, () => {
+      const violations = findArrayWithoutItems(
+        resolver.outputSchema as SchemaNode | undefined,
+        [name, 'outputSchema'],
+      );
+      expect(violations).toEqual([]);
+    });
+  }
+
+  test('x_handle_to_tweet candidates declares full item shape with required + additionalProperties:false', () => {
+    const out = xHandleToTweetResolver.outputSchema as SchemaNode;
+    const candidates = (out.properties as Record<string, SchemaNode>).candidates;
+    expect(candidates.type).toBe('array');
+    expect(candidates.items).toBeDefined();
+    const items = candidates.items as SchemaNode;
+    expect(items.type).toBe('object');
+    expect(items.properties).toBeDefined();
+    const props = items.properties as Record<string, SchemaNode>;
+    expect(Object.keys(props).sort()).toEqual(
+      ['created_at', 'score', 'text', 'tweet_id', 'url'],
+    );
+    expect((items as { required?: unknown }).required).toEqual(
+      ['tweet_id', 'text', 'created_at', 'score', 'url'],
+    );
+    expect((items as { additionalProperties?: unknown }).additionalProperties).toBe(false);
+  });
+
+  test('coverage: at least 2 builtins walked (catches future regression where registry import drops)', () => {
+    // Negative guard against codex's "underspecified registry walk" finding:
+    // if this list ever empties (e.g. an autoformatter drops the array),
+    // the rest of the suite would silently pass.
+    expect(builtins.length).toBeGreaterThanOrEqual(2);
   });
 });

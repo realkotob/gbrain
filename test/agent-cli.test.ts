@@ -23,7 +23,7 @@ let queue: MinionQueue;
 
 beforeAll(async () => {
   engine = new PGLiteEngine();
-  await engine.connect({ databaseUrl: '' });
+  await engine.connect({ database_url: '' });
   await engine.initSchema();
   queue = new MinionQueue(engine);
 });
@@ -163,6 +163,37 @@ describe('queue.add trusted-submit gate for subagent', () => {
       allowProtectedSubmit: true,
     });
     expect(ok.name).toBe('subagent_aggregator');
+  });
+
+  test('v0.31.12: subagent with non-Anthropic data.model is rejected at submit time (Layer 1)', async () => {
+    // Codex F1 in v0.31.12 plan review: the subagent loop is Anthropic Messages
+    // API + prompt caching. A job submitted with `data.model = openai:gpt-5.5`
+    // would silently fail at runtime with a confusing provider error. The
+    // submit-time guard rejects BEFORE the job enters the queue.
+    await expect(
+      queue.add('subagent', { prompt: 'hi', model: 'openai:gpt-5.5' }, {}, { allowProtectedSubmit: true }),
+    ).rejects.toThrow(/non-Anthropic/i);
+  });
+
+  test('v0.31.12: subagent with Anthropic data.model still succeeds', async () => {
+    const job = await queue.add(
+      'subagent',
+      { prompt: 'hi', model: 'anthropic:claude-opus-4-7' },
+      {},
+      { allowProtectedSubmit: true },
+    );
+    expect(job.name).toBe('subagent');
+  });
+
+  test('v0.31.12: subagent with bare claude- model id passes (provider-prefix optional)', async () => {
+    // isAnthropicProvider accepts both `anthropic:claude-foo` and bare `claude-foo`.
+    const job = await queue.add(
+      'subagent',
+      { prompt: 'hi', model: 'claude-sonnet-4-6' },
+      {},
+      { allowProtectedSubmit: true },
+    );
+    expect(job.name).toBe('subagent');
   });
 });
 

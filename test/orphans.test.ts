@@ -1,11 +1,14 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import {
   shouldExclude,
   deriveDomain,
   formatOrphansText,
+  findOrphans,
+  queryOrphanPages,
   type OrphanPage,
   type OrphanResult,
 } from '../src/commands/orphans.ts';
+import { PGLiteEngine } from '../src/core/pglite-engine.ts';
 
 // --- shouldExclude ---
 
@@ -199,5 +202,171 @@ describe('formatOrphansText', () => {
     };
     const out = formatOrphansText(result);
     expect(out).toContain('2 orphans out of 100 linkable pages (120 total; 20 excluded)');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// findOrphans + queryOrphanPages with explicit engine (v0.17 change)
+// ────────────────────────────────────────────────────────────────
+
+describe('findOrphans (engine-injected)', () => {
+  let engine: PGLiteEngine;
+
+  beforeEach(async () => {
+    engine = new PGLiteEngine();
+    await engine.connect({});
+    await engine.initSchema();
+  }, 60_000); // OAuth v25 + full migration chain needs breathing room
+
+  afterEach(async () => {
+    if (engine) await engine.disconnect();
+  }, 60_000);
+
+  test('returns pages with no inbound links, excluding pseudo-pages', async () => {
+    // Build a tiny brain: alice links to bob. alice is an orphan (nothing
+    // points to her), bob is not (alice points to him). _atlas is a pseudo
+    // page that should be excluded by default.
+    await engine.putPage('people/alice', {
+      type: 'person',
+      title: 'Alice',
+      compiled_truth: 'Alice works with Bob.',
+      timeline: '',
+    });
+    await engine.putPage('people/bob', {
+      type: 'person',
+      title: 'Bob',
+      compiled_truth: 'Bob.',
+      timeline: '',
+    });
+    await engine.putPage('_atlas', {
+      type: 'concept',
+      title: 'Atlas',
+      compiled_truth: 'pseudo-page',
+      timeline: '',
+    });
+    // Create the link alice -> bob.
+    await engine.addLink('people/alice', 'people/bob', 'mentioned', 'references', 'markdown');
+
+    const result = await findOrphans(engine);
+
+    const slugs = result.orphans.map(o => o.slug).sort();
+    expect(slugs).toEqual(['people/alice']); // _atlas excluded by default; bob has a backlink
+    expect(result.total_orphans).toBe(1);
+    expect(result.total_pages).toBe(3);
+    expect(result.excluded).toBeGreaterThanOrEqual(1); // _atlas was filtered
+  });
+
+  test('includePseudo: true surfaces pseudo-pages too', async () => {
+    await engine.putPage('_atlas', {
+      type: 'concept',
+      title: 'Atlas',
+      compiled_truth: 'pseudo',
+      timeline: '',
+    });
+
+    const result = await findOrphans(engine, { includePseudo: true });
+
+    const slugs = result.orphans.map(o => o.slug).sort();
+    expect(slugs).toContain('_atlas');
+  });
+
+  test('queryOrphanPages delegates to the passed engine (no global db)', async () => {
+    await engine.putPage('topic/standalone', {
+      type: 'concept',
+      title: 'Standalone',
+      compiled_truth: 'no inbound links',
+      timeline: '',
+    });
+
+    const rows = await queryOrphanPages(engine);
+    const slugs = rows.map(r => r.slug);
+    expect(slugs).toContain('topic/standalone');
+  });
+
+  test('zero pages: empty result (no crash on empty brain)', async () => {
+    const result = await findOrphans(engine);
+    expect(result.orphans).toEqual([]);
+    expect(result.total_orphans).toBe(0);
+    expect(result.total_pages).toBe(0);
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // Soft-delete filtering on BOTH sides (v0.26.5 invariant; codex C11)
+  // ────────────────────────────────────────────────────────────────
+
+  test('REGRESSION: soft-deleted page with no inbound is NOT in orphan results', async () => {
+    // Candidate-filter regression. Pre-fix, findOrphanPages returned every
+    // page without inbound links — including soft-deleted ones. Now the
+    // outer query filters p.deleted_at IS NULL.
+    await engine.putPage('people/alice', {
+      type: 'person',
+      title: 'Alice',
+      compiled_truth: 'Alice has no inbound links and is soft-deleted.',
+      timeline: '',
+    });
+    // Soft-delete alice directly via the DB handle (no engine method exposed).
+    await (engine as any).db.query(
+      `UPDATE pages SET deleted_at = now() WHERE slug = 'people/alice'`
+    );
+
+    const rows = await queryOrphanPages(engine);
+    const slugs = rows.map(r => r.slug);
+    expect(slugs).not.toContain('people/alice');
+  });
+
+  test('REGRESSION: live page with ONLY inbound link from soft-deleted source IS orphan (codex C11)', async () => {
+    // Link-source-filter regression. Pre-fix, a live page that had ONE
+    // inbound link from a soft-deleted source was hidden from orphan
+    // results because the EXISTS check didn't filter the source side.
+    // Now the inner JOIN filters src.deleted_at IS NULL too.
+    await engine.putPage('people/alice', {
+      type: 'person',
+      title: 'Alice',
+      compiled_truth: 'Alice was soft-deleted but used to link to Bob.',
+      timeline: '',
+    });
+    await engine.putPage('people/bob', {
+      type: 'person',
+      title: 'Bob',
+      compiled_truth: 'Bob has no live inbound links.',
+      timeline: '',
+    });
+    await engine.addLink('people/alice', 'people/bob', 'mentioned', 'references', 'markdown');
+
+    // Soft-delete alice. Bob's ONLY inbound link is now from a deleted page.
+    await (engine as any).db.query(
+      `UPDATE pages SET deleted_at = now() WHERE slug = 'people/alice'`
+    );
+
+    const rows = await queryOrphanPages(engine);
+    const slugs = rows.map(r => r.slug).sort();
+    // alice is soft-deleted → not in results (candidate filter).
+    // bob has no LIVE inbound link → IS in results (link-source filter — codex C11).
+    expect(slugs).not.toContain('people/alice');
+    expect(slugs).toContain('people/bob');
+  });
+
+  test('live page with inbound link from LIVE source is NOT orphan (regression for unchanged behavior)', async () => {
+    // Sanity check: the soft-delete filter must NOT break the basic
+    // "live link counts" case.
+    await engine.putPage('people/alice', {
+      type: 'person',
+      title: 'Alice',
+      compiled_truth: 'Alice is live and links to Bob.',
+      timeline: '',
+    });
+    await engine.putPage('people/bob', {
+      type: 'person',
+      title: 'Bob',
+      compiled_truth: 'Bob has a live inbound from Alice.',
+      timeline: '',
+    });
+    await engine.addLink('people/alice', 'people/bob', 'mentioned', 'references', 'markdown');
+
+    const rows = await queryOrphanPages(engine);
+    const slugs = rows.map(r => r.slug);
+    // alice is orphan (no inbound), bob is NOT (alice links to him).
+    expect(slugs).toContain('people/alice');
+    expect(slugs).not.toContain('people/bob');
   });
 });

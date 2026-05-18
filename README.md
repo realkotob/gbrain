@@ -4,13 +4,23 @@ Your AI agent is smart but forgetful. GBrain gives it a brain.
 
 Built by the President and CEO of Y Combinator to run his actual AI agents. The production brain powering his OpenClaw and Hermes deployments: **17,888 pages, 4,383 people, 723 companies**, 21 cron jobs running autonomously, built in 12 days. The agent ingests meetings, emails, tweets, voice calls, and original ideas while you sleep. It enriches every person and company it encounters. It fixes its own citations and consolidates memory overnight. You wake up and the brain is smarter than when you went to bed.
 
-The brain wires itself. Every page write extracts entity references and creates typed links (`attended`, `works_at`, `invested_in`, `founded`, `advises`) with zero LLM calls. Hybrid search. Self-wiring knowledge graph. Structured timeline. Backlink-boosted ranking. Ask "who works at Acme AI?" or "what did Bob invest in this quarter?" and get answers vector search alone can't reach. Benchmarked end-to-end: **Recall@5 jumps from 83% to 95%, Precision@5 from 39% to 45%, +30 more correct answers in the agent's top-5 reads** on a 240-page Opus-generated rich-prose corpus. Graph-only F1: **86.6% vs grep's 57.8%** (+28.8 pts). [Full report](docs/benchmarks/2026-04-18-brainbench-v1.md).
+The brain wires itself. Every page write extracts entity references and creates typed links (`attended`, `works_at`, `invested_in`, `founded`, `advises`) with zero LLM calls. Hybrid search. Self-wiring knowledge graph. Structured timeline. Backlink-boosted ranking. Ask "who works at Acme AI?" or "what did Bob invest in this quarter?" and get answers vector search alone can't reach. Benchmarked side-by-side against the category: gbrain lands **P@5 49.1%, R@5 97.9%** on a 240-page Opus-generated rich-prose corpus, beating its own graph-disabled variant by **+31.4 points P@5** and ripgrep-BM25 + vector-only RAG by a similar margin. The graph layer plus v0.12 extract quality together carry the gap. Full BrainBench scorecards + corpus live in the sibling [gbrain-evals](https://github.com/garrytan/gbrain-evals) repo.
 
-GBrain is those patterns, generalized. 26 skills. Install in 30 minutes. Your agent does the work. As Garry's personal agent gets smarter, so does yours.
+GBrain is those patterns, generalized. 34 skills. Install in 30 minutes. Your agent does the work. As Garry's personal agent gets smarter, so does yours.
+
+**New in v0.25.0 — BrainBench-Real (session capture, contributor opt-in):** with `GBRAIN_CONTRIBUTOR_MODE=1` set in your shell, every real `query` + `search` call through MCP, CLI, or the subagent tool-bridge gets captured (PII-scrubbed) into an `eval_candidates` table. Snapshot with `gbrain eval export`, replay against your code change with `gbrain eval replay`. Three numbers come back: mean Jaccard@k between captured and current retrieved slugs, top-1 stability, and latency Δ. **Off by default** for production users — no surprise data accumulation. Walkthrough: [docs/eval-bench.md](docs/eval-bench.md). NDJSON wire format: [docs/eval-capture.md](docs/eval-capture.md).
+
+**New in v0.28.8 — LongMemEval in the box:** `gbrain eval longmemeval <dataset.jsonl>` runs the public [LongMemEval](https://huggingface.co/datasets/xiaowu0162/longmemeval) benchmark against gbrain's hybrid retrieval. One in-memory PGLite per run, `TRUNCATE` between questions (runtime-enumerated tables, schema-migration-safe), 25.9ms p50 per question on Apple Silicon. Your `~/.gbrain` brain is never touched. Retrieved chat content is sanitized with the same `INJECTION_PATTERNS` that protect takes — one source of truth for prompt-injection defense. Hand the JSONL output to LongMemEval's `evaluate_qa.py` to score.
+
+**New in v0.35.7 — Temporal trajectory + founder scorecard.** Author typed metric assertions in the `## Facts` fence (`mrr=50000`, `arr=2000000`, `team_size=12`) and gbrain stores them as first-class typed columns. `gbrain eval trajectory companies/acme-example` prints the chronological history with regressions auto-flagged inline. `gbrain founder scorecard companies/acme-example` rolls up claim accuracy, consistency, growth direction, and red flags into a stable `schema_version: 1` JSON contract. New MCP op `find_trajectory` exposes the same data to agents (read scope, visibility-filtered for remote callers). The `consolidate` cycle phase now writes `valid_until` on chronologically-superseded facts AND uses semantic upsert on `(page_id, claim, since_date)` — re-running the dream cycle on stable input is now a true no-op (fixed a pre-existing duplicate-takes bug from prior versions).
 
 > **~30 minutes to a fully working brain.** Database ready in 2 seconds (PGLite, no server). You just answer questions about API keys.
 
 > **LLMs:** fetch [`llms.txt`](llms.txt) for the documentation map, or [`llms-full.txt`](llms-full.txt) for the same map with core docs inlined in one fetch. **Agents:** start with [`AGENTS.md`](AGENTS.md) (or [`CLAUDE.md`](CLAUDE.md) if you're Claude Code).
+
+> **Embedding providers:** OpenAI is the default, but gbrain ships with **14 recipes** covering Voyage, Google Gemini, Azure OpenAI, MiniMax, Alibaba DashScope, Zhipu, Ollama (local), llama.cpp llama-server (local), LiteLLM proxy (universal), and 5 more. Run `gbrain providers list` to see them, or read [`docs/integrations/embedding-providers.md`](docs/integrations/embedding-providers.md) for setup, pricing, and a decision tree. `gbrain doctor` will surface alternative providers whose env vars you already have set.
+
+> **New in v0.32.3.0 — compress your AGENTS.md without losing accuracy:** if your downstream agent fork has grown a 25KB+ `AGENTS.md` / `RESOLVER.md`, the new [`functional-area-resolver`](skills/functional-area-resolver/SKILL.md) skill ships a two-layer dispatch pattern that compresses 25KB → 13KB (48% the size) while **beating** the verbose baseline by +13 to +17pp across Opus 4.7, Sonnet 4.6, and Haiku 4.5. A/B eval harness, cross-model receipts, and reproduction instructions live at [`evals/functional-area-resolver/`](evals/functional-area-resolver/). The static-prompt analog of AnyTool / RAG-MCP / Anthropic Agent Skills progressive disclosure — single-LLM-pass dispatch, no second routing call.
 
 ## Install
 
@@ -28,7 +38,7 @@ Retrieve and follow the instructions at:
 https://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md
 ```
 
-That's it. The agent clones the repo, installs GBrain, sets up the brain, loads 26 skills, and configures recurring jobs. You answer a few questions about API keys. ~30 minutes.
+That's it. The agent clones the repo, installs GBrain, sets up the brain, loads 34 skills, and configures recurring jobs. You answer a few questions about API keys. ~30 minutes.
 
 If your agent doesn't auto-read `AGENTS.md`, point it at that file first:
 `https://raw.githubusercontent.com/garrytan/gbrain/master/AGENTS.md` is the non-Claude
@@ -40,14 +50,44 @@ the full doc map, use `llms.txt` at the same URL root.
 ```bash
 git clone https://github.com/garrytan/gbrain.git && cd gbrain && bun install && bun link
 gbrain init                     # local brain, ready in 2 seconds
+                                # picks a search mode (conservative / balanced / tokenmax)
 gbrain import ~/notes/          # index your markdown
 gbrain query "what themes show up across my notes?"
+gbrain search modes             # see the active search mode + per-knob attribution
+gbrain search stats             # cache hit rate + intent mix after some real usage
 ```
+
+**v0.32.3 — named search modes.** `gbrain init` asks once which mode fits
+your workload. The cost spread depends on BOTH the mode AND your downstream
+model — 25x corner-to-corner. Per-query cost @ 10K queries/month (typical
+single-user volume; multiply by 10 for heavy / multi-user fleets):
+
+| Mode \ Downstream | Haiku 4.5 (\$1/M) | Sonnet 4.6 (\$3/M) | Opus 4.7 (\$5/M) |
+|---|---|---|---|
+| `conservative` (~4K) | **\$40/mo** | \$120/mo | \$200/mo |
+| `balanced` (~10K) | \$100/mo | \$300/mo | \$500/mo |
+| `tokenmax` (~20K) | \$200/mo | \$600/mo | **\$1,000/mo** |
+
+Natural pairings (corner-diagonal) span ~4x at realistic single-user
+volume. Auto-suggests based on your configured `models.tier.subagent`.
+Non-TTY installs auto-pick `balanced` and print a hint pointing at
+`gbrain config set search.mode <m>`. After some real usage, run
+`gbrain search stats` for observability and `gbrain search tune` for
+data-driven recommendations. Methodology + eval results live at
+[docs/eval/SEARCH_MODE_METHODOLOGY.md](docs/eval/SEARCH_MODE_METHODOLOGY.md).
 
 **Do NOT use `bun install -g github:garrytan/gbrain`.** Bun blocks the top-level
 postinstall hook on global installs, so schema migrations never run and the CLI
 aborts with `Aborted()` the first time it opens PGLite. Use `git clone + bun install
 && bun link` as shown above. See [#218](https://github.com/garrytan/gbrain/issues/218).
+
+**Do NOT use `bun add -g gbrain` or `npm install -g gbrain`.** The npm registry
+has an unrelated package squatting that name (`gbrain@1.3.x`) — you'd silently
+install the wrong binary and overwrite the canonical one. v0.28.5+ detects this
+and prints a recovery message on `gbrain upgrade`, but the `git clone + bun link`
+path above is the only reliable install method until we publish under
+`@garrytan/gbrain` (tracked v0.29 follow-up). See
+[#658](https://github.com/garrytan/gbrain/issues/658).
 
 ```
 3 results (hybrid search, 0.12s):
@@ -77,19 +117,58 @@ GBrain exposes 30+ MCP tools via stdio:
 
 Add to `~/.claude/server.json` (Claude Code), Settings > MCP Servers (Cursor), or your client's MCP config.
 
-### Remote MCP (Claude Desktop, Cowork, Perplexity)
+### Remote MCP with OAuth 2.1 (ChatGPT, Claude Desktop, Cowork, Perplexity)
+
+`gbrain serve --http` starts a production-grade OAuth 2.1 server with an embedded admin dashboard. Zero external infrastructure. Every major AI client connects, every request is scoped, every action is logged.
 
 ```bash
-ngrok http 8787 --url your-brain.ngrok.app
-bun run src/commands/auth.ts create "claude-desktop"
+# Start the HTTP server (prints admin bootstrap token on first start)
+gbrain serve --http --port 3131
+
+# Open the admin dashboard, paste the bootstrap token, register a client
+open http://localhost:3131/admin
+
+# Expose publicly (set --public-url so the OAuth issuer matches)
+ngrok http 3131 --url your-brain.ngrok.app
+gbrain serve --http --port 3131 --public-url https://your-brain.ngrok.app
+
+# ChatGPT and other OAuth-aware clients can also connect:
 claude mcp add gbrain -t http https://your-brain.ngrok.app/mcp -H "Authorization: Bearer TOKEN"
 ```
 
-Per-client guides: [`docs/mcp/`](docs/mcp/DEPLOY.md). ChatGPT requires OAuth 2.1 (not yet implemented).
+Register OAuth clients from the `/admin` dashboard — click **Register client**,
+pick scopes, save the credentials shown once in the reveal modal. Programmatic
+registration via `oauthProvider.registerClientManual(...)` and the
+`gbrain auth register-client` CLI are also available.
 
-## The 26 Skills
+- **OAuth 2.1 via the MCP SDK** — client credentials (machine-to-machine: Perplexity, Claude), authorization code + PKCE (browser-based: ChatGPT), refresh token rotation, revocation, protected resource metadata. PKCE-only public clients (`token_endpoint_auth_method: "none"`) register without a secret per RFC 7591 §3.2.1 (v0.34). Optional Dynamic Client Registration behind `--enable-dcr` (DCR redirect_uris must be `https://` or loopback per RFC 6749 §3.1.2.1).
+- **Source-scoped OAuth clients (v0.34)** — `gbrain auth register-client my-agent --source dept-x` ties the client's write authority to one source; read paths only return rows matching that source. `--federated-read S1,S2,S3` adds an orthogonal read-scope axis for shared brains (departments writing to one canon while reading the union). Pre-v0.34 clients are backfilled to `source_id='default'` on upgrade.
+- **Loopback default for `serve --http` (v0.34)** — listens on `127.0.0.1` unless `--bind 0.0.0.0` (or a specific interface IP). Personal-laptop installs no longer publish the brain to the LAN by accident. A stderr WARN fires when `--public-url` is set without `--bind` so the operator sees the binding before the first request.
+- **Scoped operations** — 30 operations tagged `read | write | admin`. `sync_brain` and `file_upload` are `localOnly`, rejected over HTTP.
+- **React admin dashboard** — 7 screens baked into the binary (~65KB gzip). Live SSE activity feed, agents table, credential reveal, filterable request log, per-client config export.
+- **Legacy bearer tokens still work** — pre-v0.26 `gbrain auth create` tokens continue to authenticate as `read+write+admin`. v0.22.7's simpler `src/mcp/http-transport.ts` path stays compiled in for backward compat callers; v0.26+ deployments use the OAuth-aware `serve-http.ts`.
 
-GBrain ships 26 skills organized by `skills/RESOLVER.md`. The resolver tells your agent which skill to read for any task.
+Per-client guides: [`docs/mcp/`](docs/mcp/DEPLOY.md). Hardening defaults, env vars, and threat model: [SECURITY.md](SECURITY.md).
+
+### Using gbrain with GStack
+
+If your engineering agent runs on [GStack](https://github.com/garrytan/gstack), point it at gbrain for code lookup instead of grep+read. Cathedral II (v0.21.0) ships call-graph edges and two-pass retrieval — `/investigate`, `/review`, `/plan-eng-review`, and `/office-hours` all benefit when the agent walks the symbol graph instead of scanning files line by line.
+
+The five magical-moment commands:
+
+```bash
+gbrain code-callers searchKeyword           # who calls this symbol?
+gbrain code-callees searchKeyword           # what does this symbol call?
+gbrain code-def BrainEngine                 # where is X defined?
+gbrain code-refs BrainEngine                # all reference sites
+gbrain query "how does N+1 handling work" --near-symbol BrainEngine.searchKeyword --walk-depth 2
+```
+
+All five auto-emit JSON on non-TTY (gh-CLI convention) so a GStack subagent shelling out via bash gets a clean parseable response. Run `gbrain sources add <repo> --strategy code` to index a repo, then your agent's brain-first lookup covers code, not just markdown. ([Cathedral II release notes](CHANGELOG.md#0210---2026-04-25))
+
+## The 34 Skills
+
+GBrain ships 34 skills organized by `skills/RESOLVER.md` (or your OpenClaw's `AGENTS.md` — both filenames are supported as of v0.19). The resolver tells your agent which skill to read for any task. v0.25.1 added 9 research-flavored skills (`book-mirror` flagship plus 8 pairings); see the new "Research and synthesis" section below.
 
 [Skill files are code.](https://x.com/garrytan/status/2042925773300908103) They're the most powerful way to get knowledge work done. A skill file is a fat markdown document that encodes an entire workflow: when to fire, what to check, how to chain with other skills, what quality bar to enforce. The agent reads the skill and executes it. Skills can also call deterministic TypeScript code bundled in GBrain (search, import, embed, sync) for the parts that shouldn't be left to LLM judgment. [Thin harness, fat skills](docs/ethos/THIN_HARNESS_FAT_SKILLS.md): the intelligence lives in the skills, not the runtime.
 
@@ -108,6 +187,20 @@ GBrain ships 26 skills organized by `skills/RESOLVER.md`. The resolver tells you
 | **idea-ingest** | Links, articles, tweets become brain pages with analysis, author people pages, and cross-linking. |
 | **media-ingest** | Video, audio, PDF, books, screenshots, GitHub repos. Transcripts, entity extraction, backlink propagation. |
 | **meeting-ingestion** | Transcripts become brain pages. Every attendee gets enriched. Every company gets a timeline entry. |
+| **voice-note-ingest** | Voice notes captured verbatim — exact phrasing preserved, never paraphrased. Routes to originals/concepts/people/companies/ideas/personal/voice-notes based on content. |
+| **article-enrichment** | Raw article dumps become structured pages with executive summary, verbatim quotes, key insights, and why-it-matters. |
+
+### Research and synthesis (v0.25.1)
+
+| Skill | What it does |
+|-------|-------------|
+| **book-mirror** | Flagship. Hand the agent a book, get a personalized two-column chapter-by-chapter analysis. Left column preserves the chapter's actual content; right column maps every idea to your life using your words from the brain. ~$6 for a 20-chapter book at Opus. Pairs with `gbrain book-mirror` CLI for the trusted runtime. |
+| **strategic-reading** | Read a book / article / case study through ONE specific problem-lens. Output: applied playbook with do / avoid / watch-for and short / medium / long-term recommendations. |
+| **concept-synthesis** | Deduplicate thousands of concept stubs into a tiered intellectual map (T1 Canon to T4 Riff). Trace how ideas evolved across years of notes. |
+| **perplexity-research** | Brain-augmented web research. Sends brain context to Perplexity so the search focuses on what's NEW vs already-known. Output: Executive Summary + Key New Developments + Confirming Signals + Contradictions or Updates + Recommended Brain Updates + Citations. |
+| **archive-crawler** | Universal archivist for personal file archives (Dropbox / Backblaze / Gmail-takeout / hard-drive dumps). REFUSES to run unless `archive-crawler.scan_paths:` is set in `gbrain.yml`. Safe-by-default safety fence. |
+| **academic-verify** | Trace a research claim through publication → methodology → raw data → independent replication. Routes through perplexity-research; produces a verdict (verified / partial / unverifiable / misattributed / retracted). |
+| **brain-pdf** | Render any brain page to publication-quality PDF via the gstack `make-pdf` binary. Strips frontmatter, sanitizes emoji, applies running headers. |
 
 ### Brain operations
 
@@ -115,7 +208,7 @@ GBrain ships 26 skills organized by `skills/RESOLVER.md`. The resolver tells you
 |-------|-------------|
 | **enrich** | Tiered enrichment (Tier 1/2/3). Creates and updates person/company pages with compiled truth and timelines. |
 | **query** | 3-layer search with synthesis and citations. Says "the brain doesn't have info on X" instead of hallucinating. |
-| **maintain** | Periodic health: stale pages, orphans, dead links, citation audit, back-link enforcement, tag consistency. |
+| **maintain** | Periodic health: stale pages, orphans, dead links, citation audit, back-link enforcement, tag consistency. v0.23 adds the dream cycle's synthesize + patterns phases ... overnight conversation transcripts become reflections, originals, and 25-year patterns. |
 | **citation-fixer** | Scans pages for missing or malformed citations. Fixes format to match the standard. |
 | **repo-architecture** | Where new brain files go. Decision protocol: primary subject determines directory, not format. |
 | **publish** | Share brain pages as password-protected HTML. Zero LLM calls. |
@@ -133,7 +226,10 @@ GBrain ships 26 skills organized by `skills/RESOLVER.md`. The resolver tells you
 | **webhook-transforms** | External events (SMS, meetings, social mentions) converted into brain pages with entity extraction. |
 | **testing** | Validates every skill has SKILL.md with frontmatter, manifest coverage, resolver coverage. |
 | **skill-creator** | Create new skills following the conformance standard. MECE check against existing skills. |
-| **minion-orchestrator** | Long-running agent work as background jobs. Submit, fan out children with depth/cap/timeouts, collect results via child_done inbox. |
+| **skillify** | The "skillify it!" meta-skill. Orchestrates the 10-step loop so failures become durable skills: scaffold the stubs via `gbrain skillify scaffold`, write the real logic, gate with `gbrain skillify check` + `gbrain check-resolvable`. |
+| **skillpack-check** | Agent-readable gbrain health report. Exit code for CI; JSON for debugging. Cron-friendly. |
+| **smoke-test** | 8 post-restart health checks with auto-fix (Bun, CLI, DB, worker, Zod CJS, gateway, API key, brain repo). Drop-in user tests at `~/.gbrain/smoke-tests.d/*.sh`. |
+| **minion-orchestrator** | Background work in one skill. Shell jobs via `gbrain jobs submit shell` (operator/CLI, MCP blocks protected names) and LLM subagents via `gbrain agent run`. Parent-child DAGs, `child_done` inbox, durability across worker restarts. |
 
 ### Identity and setup
 
@@ -192,7 +288,7 @@ Here's my personal OpenClaw deployment: one Render container. Supabase Postgres 
 
 Under that 19-cron load, sub-agent spawn couldn't clear the 10-second gateway wall. Minions landed it in under a second for zero tokens. **Scaling:** 19,240 posts across 36 months, single bash loop, ~15 min total, $0.00. Sub-agents: ~9 min best case, ~$1.08 in tokens, ~40% spawn failure. **Lab:** durability ∞ (SIGKILL mid-flight, 10/10 rescued), throughput ~10× faster, fan-out ~21× with no failure wall, memory ~400× less.
 
-Full benchmarks: [production](docs/benchmarks/2026-04-18-minions-vs-openclaw-production.md) and [lab](docs/benchmarks/2026-04-18-minions-vs-openclaw-subagents.md).
+Full benchmarks live in [gbrain-evals](https://github.com/garrytan/gbrain-evals/tree/main/docs/benchmarks).
 
 ### The routing rule
 
@@ -209,8 +305,11 @@ The six daily pains — spawn storms, agents that stop responding, forgotten dis
 gbrain jobs smoke                        # verify install
 gbrain jobs submit sync --params '{}'    # fire a background job
 gbrain jobs stats                        # health dashboard
-gbrain jobs work --concurrency 4         # start a worker (Postgres only)
+gbrain jobs supervisor --concurrency 4   # canonical: auto-restarting worker (Postgres only)
+gbrain jobs work --concurrency 4         # raw worker (no crash recovery — prefer `supervisor`)
 ```
+
+`gbrain jobs supervisor` keeps the worker alive across crashes with exponential backoff, atomic PID locking, structured audit events at `~/.gbrain/audit/supervisor-*.jsonl`, and a `start --detach` / `status --json` / `stop` subcommand surface for agents. In containers it runs as PID 1; on systemd hosts it's the child of `gbrain-worker.service`. Full deployment guide: [`docs/guides/minions-deployment.md`](docs/guides/minions-deployment.md).
 
 Read [`skills/minion-orchestrator/SKILL.md`](skills/minion-orchestrator/SKILL.md) for parent-child DAGs, fan-in collection, steering via inbox.
 
@@ -249,38 +348,123 @@ gbrain agent logs 1247 --follow --since 5m
 
 Durability is the point: every Anthropic turn commits to `subagent_messages`, every tool call to `subagent_tool_executions`. Worker kills, OpenClaw crashes, timeouts — all resumable. Host repos (your OpenClaw, etc.) ship their own subagent definitions via `GBRAIN_PLUGIN_PATH` + a `gbrain.plugin.json` manifest: see [`docs/guides/plugin-authors.md`](docs/guides/plugin-authors.md). Requires `ANTHROPIC_API_KEY` on the worker.
 
-## Skillify: your skills tree stops being a black box
+## Skillify: say "skillify it!" and the bug becomes structurally impossible to repeat
 
-Hermes and similar agent frameworks auto-create skills as a background behavior. Fine until you don't know what the agent shipped. Checklists decay. Tests drift. Resolver entries get stale. Six months later you've got an opaque pile of "skills" that nobody has read, nobody has tested, and nobody is sure still work.
+Your OpenClaw hit a new failure. You fix it once in conversation. You say "skillify it!"
+And now the fix is permanent: a SKILL.md with triggers, a deterministic script with tests, a
+routing fixture the agent re-evaluates daily, a filing audit that keeps the output from
+drifting. Ten items. Every one required. The bug can't recur.
 
-GBrain ships the same capability. Except the human stays in the loop.
+Hermes and similar agent frameworks auto-create skills as a background behavior. Fine until
+you don't know what the agent shipped. Checklists decay. Tests drift. Resolver entries get
+stale. Six months later it's an opaque pile nobody has read, nobody has tested, and nobody
+is sure still works. GBrain ships the same capability except the human stays in the loop
+and every step is a command you can run.
 
-- **`/skillify`** turns raw code into a properly-skilled feature: SKILL.md + deterministic script + unit tests + integration tests + LLM evals + resolver trigger + resolver trigger eval + E2E smoke + brain filing. Ten items. Every one required.
-- **`gbrain check-resolvable`** walks the whole skills tree: reachability, MECE overlap, DRY violations, gap detection, orphaned skills. Exits non-zero if anything is off.
-- **`scripts/skillify-check.ts`** — machine-readable audit. `--json` for CI, `--recent` for last-7-days files.
-
-You decide when and what. The tooling keeps the checklist honest.
-
-### Why this is the right answer for OpenClaw
-
-Auto-generated skills are a liability the first time a behavior breaks. Was it the skill? The test? The resolver trigger? The eval? You don't know, because you never read it. Debugging a black box is pure guesswork.
-
-Skillify makes the black box legible. Every skill in your tree has: a contract (SKILL.md), tests that exercise that contract, an eval that grades LLM output against a rubric, a resolver trigger the user actually types, and a test that confirms the trigger routes right. If something breaks, you know which layer to look at. If anything goes stale, `check-resolvable` says so.
-
-In practice this combo produces **zero orphaned skills, every feature with tests + evals + resolver triggers + evals of the triggers.** Compounding quality instead of compounding entropy.
+### The four verbs you need (v0.19)
 
 ```bash
-# Audit a feature's skill completeness (10-item checklist)
-bun run scripts/skillify-check.ts src/commands/publish.ts
+# 1. Scaffold all 5 stub files for a new skill in one shot.
+gbrain skillify scaffold webhook-verify \
+  --description "verify ngrok webhooks" \
+  --triggers "verify the webhook,check tunnel" \
+  --writes-pages --writes-to people/,companies/
 
-# In CI: fail the build when a new feature isn't properly skilled
-bun run scripts/skillify-check.ts --json --recent
+# 2. Replace the SKILLIFY_STUB sentinels with real logic + real tests.
+$EDITOR skills/webhook-verify/scripts/webhook-verify.mjs
+$EDITOR test/webhook-verify.test.ts
 
-# Validate the whole skills tree before shipping
-gbrain check-resolvable
+# 3. Run the 10-item audit: SKILL.md exists, script exists, unit + E2E tests,
+#    LLM evals, resolver entry, trigger eval, check-resolvable gate, brain filing.
+gbrain skillify check skills/webhook-verify/scripts/webhook-verify.mjs
+
+# 4. Verify the whole tree: reachability, MECE overlap, DRY, routing gaps,
+#    filing audit, SKILLIFY_STUB sentinels (fails if any skill still has one).
+gbrain check-resolvable              # warnings advisory, errors block
+gbrain check-resolvable --strict     # warnings block too (CI opt-in)
 ```
 
-**Skillify is not a nice-to-have. It's the piece that makes the skills tree survive six months of compounding work.** Read [`skills/skillify/SKILL.md`](skills/skillify/SKILL.md) for the full 10-item checklist and the anti-patterns it catches.
+Idempotent re-runs. `--force` regenerates stub files but NEVER duplicates a resolver row.
+Scaffold completes in under 2 seconds. The real work (your rule, your script, your tests)
+is what you spend time on. Everything else is boilerplate the CLI writes for you.
+
+### `gbrain routing-eval` — catch the routing gaps your users actually hit
+
+Drop a `routing-eval.jsonl` fixture next to any skill. Each line is `{intent, expected_skill,
+ambiguous_with?}`. `gbrain check-resolvable` runs the structural layer by default; `gbrain
+routing-eval` runs the same structural layer as a dedicated CI verb. The `--llm` flag is
+accepted as a placeholder for a future LLM tie-break layer; in this release it emits a stderr
+notice and runs structural only. False positives (wrong skill matched), missed routes (no
+skill matched), and tautological fixtures (intent copies trigger verbatim) all surface as
+specific advisories with the exact file:line to fix.
+
+### Works on your OpenClaw, not just gbrain's repo
+
+v0.19 teaches `gbrain check-resolvable` to accept `AGENTS.md` as a resolver file alongside
+`RESOLVER.md`, at either the skills directory OR one level up (OpenClaw-native workspace-root
+layout). The skill manifest auto-derives from walking `skills/*/SKILL.md` when `manifest.json`
+is missing. Set `OPENCLAW_WORKSPACE=~/your-openclaw/workspace` and everything just works:
+
+```bash
+export OPENCLAW_WORKSPACE=~/your-openclaw/workspace
+gbrain check-resolvable --verbose
+# Auto-detects: AGENTS.md at workspace root, 107 skills derived from SKILL.md walk,
+# 15 unreachable errors surfaced, 108 advisory warnings for overlaps and gaps.
+```
+
+First run on a real OpenClaw deployment found 15 unreachable skills out of 102 — about 15%
+of the tree was dark. The essay's "skills the agent can never reach" footgun, now visible.
+
+### `gbrain skillpack install` — drop 25 curated skills into your OpenClaw
+
+The skills gbrain ships are a curated bundle. Install them into your workspace with
+dependency closure (shared conventions come along), per-file diff protection (your local
+edits are never clobbered without `--overwrite-local`), a file lock that serializes
+concurrent installers, and an atomic managed-block update to your AGENTS.md so you can
+see exactly what gbrain wrote.
+
+```bash
+gbrain skillpack list                          # 25 curated skills
+gbrain skillpack install brain-ops             # one skill + its shared conventions
+gbrain skillpack install --all                 # the full bundle
+gbrain skillpack install brain-ops --dry-run   # preview; no writes
+gbrain skillpack diff brain-ops                # compare bundle vs your local copy
+```
+
+Re-running is safe. The managed-block markers in your AGENTS.md let `skillpack install`
+accumulate rows across separate single-skill installs instead of overwriting each other.
+A receipt comment inside the fence (`<!-- gbrain:skillpack:manifest cumulative-slugs="..." -->`)
+tracks what gbrain has installed across runs. `install --all` is the only path that prunes;
+per-skill install never deletes what it didn't install. If you hand-add a row inside the fence,
+gbrain preserves it on reinstall and emits a stderr notice telling your agent to investigate.
+
+**Skillify is the piece that makes the skills tree survive six months of compounding work.**
+Read [`skills/skillify/SKILL.md`](skills/skillify/SKILL.md) for the full 10-item checklist
+and the anti-patterns it catches.
+
+## Storage tiering: keep bulk content out of git (v0.22.11)
+
+When your brain crosses 100K files and bulk machine-generated content (tweets, articles, transcripts)
+becomes the size driver, declare which directories belong in git and which live in the database only.
+
+```yaml
+# gbrain.yml at the brain repo root
+storage:
+  db_tracked:
+    - people/
+    - companies/
+    - deals/
+  db_only:
+    - media/x/
+    - media/articles/
+    - meetings/transcripts/
+```
+
+`gbrain sync` auto-manages your `.gitignore` for `db_only` paths. `gbrain export --restore-only --repo .`
+repopulates missing files from the database (container restart, fresh clone, accidental rm).
+`gbrain storage status` shows the tier breakdown.
+
+Full guide: [docs/storage-tiering.md](docs/storage-tiering.md).
 
 ## Getting Data In
 
@@ -295,6 +479,7 @@ GBrain ships integration recipes that your agent sets up for you. Each recipe te
 | [X-to-Brain](recipes/x-to-brain.md) | — | Twitter timeline + mentions + deletions |
 | [Calendar-to-Brain](recipes/calendar-to-brain.md) | credential-gateway | Google Calendar to searchable daily pages |
 | [Meeting Sync](recipes/meeting-sync.md) | — | Circleback transcripts to brain pages with attendees |
+| [Restart Sweep](recipes/restart-sweep.md) | OpenClaw + Telegram | Detect dropped Telegram messages after OpenClaw gateway restarts |
 
 **Data research recipes** extract structured data from email into tracked brain pages. Built-in recipes for investor updates (MRR, ARR, runway, headcount), expense tracking, and company metrics. Create your own with `gbrain research init`.
 
@@ -317,7 +502,7 @@ Run `gbrain integrations` to see status.
 │   Brain Repo     │    │    GBrain     │    │    AI Agent      │
 │   (git)          │    │  (retrieval)  │    │  (read/write)    │
 │                  │    │               │    │                  │
-│  markdown files  │───>│  Postgres +   │<──>│  26 skills       │
+│  markdown files  │───>│  Postgres +   │<──>│  29 skills       │
 │  = source of     │    │  pgvector     │    │  define HOW to   │
 │    truth         │    │               │    │  use the brain   │
 │                  │<───│  hybrid       │    │                  │
@@ -329,6 +514,8 @@ Run `gbrain integrations` to see status.
 ```
 
 The repo is the system of record. GBrain is the retrieval layer. The agent reads and writes through both. Human always wins... edit any markdown file and `gbrain sync` picks up the changes.
+
+For multi-machine setups (cross-machine thin client) and multi-worktree setups (per-worktree code engine + shared remote artifacts), see [`docs/architecture/topologies.md`](docs/architecture/topologies.md).
 
 ## The Knowledge Model
 
@@ -381,7 +568,7 @@ gbrain extract links --source db        # wire up the existing 29K pages
 gbrain extract timeline --source db     # extract dated events from markdown timelines
 ```
 
-Then ask graph questions or watch the search ranking improve. Benchmarked: **Recall@5 jumps from 83% to 95%, Precision@5 from 39% to 45%, +30 more correct answers in the agent's top-5 reads** on a 240-page Opus-generated rich-prose corpus. Graph-only F1 hits 86.6% vs grep's 57.8% (+28.8 pts). See [docs/benchmarks/2026-04-18-brainbench-v1.md](docs/benchmarks/2026-04-18-brainbench-v1.md).
+Then ask graph questions or watch the search ranking improve. Benchmarked side-by-side against ripgrep-BM25, vector-only RAG (same embedder), and gbrain-with-graph-disabled: gbrain lands **P@5 49.1%, R@5 97.9%** on a 240-page Opus-generated rich-prose corpus, beating hybrid-nograph by **+31.4 points P@5**. Isolate the contribution: v0.11→v0.12 moved the same gbrain codebase from P@5 22.1% → 49.1% on identical inputs, so typed-link extract quality is load-bearing. Full scorecards + reproducible corpus: [gbrain-evals](https://github.com/garrytan/gbrain-evals).
 
 ## Search
 
@@ -428,6 +615,8 @@ Question
   │    ├─ Multi-query expansion (Haiku rephrases the question 3 ways)
   │    ├─ Vector search (HNSW cosine over OpenAI embeddings)
   │    ├─ Keyword search (Postgres tsvector + websearch_to_tsquery)
+  │    ├─ Source-aware ranking (curated dirs outrank chat/daily swamp at SQL layer)
+  │    ├─ Hard-exclude (test/ archive/ attachments/ .raw/ filtered before retrieval)
   │    ├─ Reciprocal Rank Fusion (score = sum 1/(60+rank) across both)
   │    ├─ Cosine re-scoring (re-rank chunks against actual query embedding)
   │    ├─ Compiled-truth boost (assessments outrank timeline noise)
@@ -457,7 +646,7 @@ End-to-end on the BrainBench v1 corpus (240 rich-prose pages, before/after PR #1
 
 Plus 5 orthogonal capability checks (identity resolution, temporal queries,
 performance at 10K-page scale, robustness to malformed input, MCP operation
-contract). All pass. [Full report.](docs/benchmarks/2026-04-18-brainbench-v1.md)
+contract). All pass. Full report: [gbrain-evals](https://github.com/garrytan/gbrain-evals).
 
 The point: each technique handles a class of inputs the others miss. Vector
 search misses exact slug refs; keyword catches them. Keyword misses conceptual
@@ -535,8 +724,11 @@ SEARCH
   gbrain query <question>              Hybrid search (vector + keyword + RRF)
 
 IMPORT
-  gbrain import <dir> [--no-embed]      Import markdown (idempotent)
-  gbrain sync [--repo <path>]           Git-to-brain incremental sync
+  gbrain import <dir> [--no-embed] [--workers N]
+                                        Import markdown (idempotent)
+  gbrain sync [--repo <path>] [--workers N]
+                                        Git-to-brain incremental sync
+                                        (>100-file diffs auto-parallelize 4 workers on Postgres)
   gbrain export [--dir ./out/]          Export to markdown
 
 FILES
@@ -561,12 +753,101 @@ JOBS (Minions)
   gbrain jobs smoke                                     One-command health check
   gbrain jobs work [--queue Q] [--concurrency N]        Start worker daemon
 
+SKILLS (v0.19)
+  gbrain skillify scaffold <name>       Create 5 stub files + idempotent resolver row
+  gbrain skillify check [path]          10-item audit of a skill
+  gbrain skillpack list                 Print the 25 curated skills in the bundle
+  gbrain skillpack install <name>       Copy one skill + its shared conventions into target
+  gbrain skillpack install --all        Install the full curated bundle
+  gbrain skillpack diff <name>          Per-file diff: bundle vs target workspace
+  gbrain check-resolvable [--strict]    Resolver audit (reachability, MECE, DRY, routing, filing,
+                                        SKILLIFY_STUB). Accepts RESOLVER.md OR AGENTS.md.
+  gbrain routing-eval [--llm] [--json]  Intent→skill routing accuracy on fixtures
+
+EVAL
+  gbrain eval --qrels <path>            Legacy IR-eval (P@k, R@k, MRR, nDCG@k against ground truth)
+  gbrain eval export [--since DUR]      Stream captured eval_candidates as NDJSON (BrainBench-Real)
+  gbrain eval prune --older-than DUR    Retention cleanup for eval_candidates (requires window)
+  gbrain eval replay --against FILE     Replay captured queries vs current build (Jaccard@k, top-1, latency Δ)
+  gbrain eval longmemeval <dataset>     Run public LongMemEval against gbrain hybrid retrieval (v0.28.8)
+                                        [--limit N] [--retrieval-only] [--keyword-only] [--expansion]
+                                        [--top-k K] [--model M] [--output FILE]
+  gbrain eval suspected-contradictions  Cached contradiction probe (v0.32.6, 6-verdict enum v0.35.3.1)
+                                        [run|trend|review] [--severity S] [--budget-usd N]
+  gbrain eval trajectory <entity>       Chronological typed-claim trajectory + regressions (v0.35.7)
+                                        [--metric M] [--since YYYY-MM-DD] [--until YYYY-MM-DD]
+                                        [--limit N] [--json]
+
+TEMPORAL (v0.35.7)
+  gbrain founder scorecard <entity>     Roll up an entity's typed claims + resolved-take outcomes into
+                                        four signals: claim_accuracy / consistency / growth_trajectory /
+                                        red_flags. Stable JSON contract (schema_version: 1).
+                                        [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--json]
+                                        Backed by the find_trajectory MCP op (read scope, federated
+                                        source-scoped, visibility-filtered for remote callers).
+                                        Override regression threshold:
+                                          export GBRAIN_TRAJECTORY_REGRESSION_THRESHOLD=0.05
+
 ADMIN
   gbrain doctor [--json] [--fast]       Health checks (resolver, skills, DB, embeddings)
   gbrain doctor --fix [--dry-run]       Auto-fix DRY violations (delegate inlined rules to conventions)
+  gbrain doctor --locks                 List idle-in-tx backends (57014 diagnostic, Postgres only)
   gbrain stats                          Brain statistics
+  gbrain models                         Show live model routing (tier defaults,
+                                        per-task overrides, alias map, source-of-truth).
+                                        v0.31.12: tier system + recipe-models merge.
+                                        Power-user override:
+                                          gbrain config set models.default opus
+                                          gbrain config set models.tier.deep opus
+  gbrain models doctor                  1-token reachability probe for each configured
+                                        chat/expansion model + a zero-token embedding_config
+                                        probe (catches Voyage flexible-dim misconfigs before
+                                        first embed). Catches `model_not_found` before the
+                                        next agent run silently degrades.
+                                        [--skip=<provider>] [--json]
   gbrain serve                          MCP server (stdio)
+  gbrain serve --http [--port 3131]     HTTP MCP server with OAuth 2.1 + admin dashboard
+                                        [--bind HOST] (v0.34: default 127.0.0.1; pass
+                                        --bind 0.0.0.0 for LAN/remote access)
+                                        [--token-ttl 3600] [--enable-dcr]
+                                        [--public-url URL] [--log-full-params]
+  gbrain auth create|list|revoke|test   Legacy bearer token management
+  gbrain auth register-client <name>    Register an OAuth 2.1 client
+        --grant-types client_credentials,authorization_code
+        --scopes "read write admin"
+        --source <id>                   v0.34: write authority for source-scoped clients
+        --federated-read <S1,S2,...>    v0.34: read scope across multiple sources
+  gbrain auth revoke-client <client_id> Revoke an OAuth 2.1 client (cascade purges
+                                        active tokens + auth codes via FK CASCADE)
+  # OAuth 2.1 clients can also be registered from the /admin dashboard or
+  # programmatically via oauthProvider.registerClientManual() for host-repo wrappers.
   gbrain integrations                   Integration recipe dashboard
+  gbrain sources list|add|remove|...    Multi-source brain management (v0.18)
+                                        v0.28.2: --url <https://...> registers a federated
+                                        remote git repo; clone is auto-managed under
+                                        $GBRAIN_HOME/clones/<id>/ and re-cloned on sync if
+                                        it goes missing. Also exposed via MCP for remote
+                                        agent setup (whoami + sources_{add,list,remove,status}).
+  gbrain dream [--dry-run] [--phase N]  11-phase maintenance cycle (lint→backlinks→sync→synthesize
+                                        →extract→patterns→recompute_emotional_weight→consolidate
+                                        →embed→orphans→purge). v0.23 added synthesize + patterns.
+                                        v0.29 added emotional-weight recompute. v0.30.2: synthesize
+                                        chunks fat transcripts. v0.31: consolidate promotes hot facts
+                                        into takes overnight.
+  gbrain dream --input <file>           Ad-hoc transcript synthesis (implies --phase synthesize)
+  gbrain dream --date YYYY-MM-DD        Synthesize a single day; --from/--to for backfill ranges
+
+  # v0.31 Hot Memory: cross-session facts queryable in real time.
+  gbrain recall <entity>                List active facts for an entity (newest first)
+  gbrain recall --since "1h ago"        Recency-filtered recall
+  gbrain recall --session <id>          Facts captured in a session id
+  gbrain recall --today                 Markdown render with kind icons (📅🎯🤝💭📌)
+  gbrain recall --supersessions         Audit log of auto-overwritten facts
+  gbrain recall --grep <text>           Substring filter (case-insensitive)
+  gbrain recall --as-context            Prompt-injection-ready markdown for headless agents
+  gbrain recall --json                  Structured output with effective_confidence per row
+  gbrain forget <fact-id>               Expire a fact (soft delete; never hard-DELETE)
+
   gbrain check-backlinks check|fix      Back-link enforcement
   gbrain lint [--fix]                   LLM artifact detection
   gbrain repair-jsonb [--dry-run]       Repair v0.12.0 double-encoded JSONB (Postgres)
@@ -590,7 +871,7 @@ The skills in this repo are those patterns, generalized. What took 11 days to bu
 
 **For agents:**
 - **[skills/RESOLVER.md](skills/RESOLVER.md)** ... Start here. The skill dispatcher.
-- [Individual skill files](skills/) ... 25 standalone instruction sets
+- [Individual skill files](skills/) ... 28 standalone instruction sets (25 ship in the curated `gbrain skillpack install` bundle)
 - [GBRAIN_SKILLPACK.md](docs/GBRAIN_SKILLPACK.md) ... Legacy reference architecture
 - [Getting Data In](docs/integrations/README.md) ... Integration recipes and data flow
 - [GBRAIN_VERIFY.md](docs/GBRAIN_VERIFY.md) ... Installation verification
@@ -605,11 +886,13 @@ The skills in this repo are those patterns, generalized. What took 11 days to bu
 - [CHANGELOG.md](CHANGELOG.md) ... Version history
 
 **Benchmarks:**
-- [BrainBench v1 (PR #188)](docs/benchmarks/2026-04-18-brainbench-v1.md) ... single comprehensive before/after report on a 240-page Opus-generated corpus. 7 categories: relational queries, identity resolution, temporal queries, performance, robustness, MCP contract.
+- [gbrain-evals](https://github.com/garrytan/gbrain-evals) ... BrainBench, the sibling repo that holds the eval harness, corpus, scorecards, and 4-adapter comparisons. Depends on gbrain; not installed alongside gbrain.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Run `bun test` for unit tests. E2E tests: spin up Postgres with pgvector, run `bun run test:e2e`, tear down.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Run `bun run test` for the parallel unit-test fast loop (~85s on a Mac dev box, 3700+ tests) or `bun run verify` for the pre-push gate (privacy + jsonb + progress + test-isolation + wasm + admin-build + typecheck). For the full local CI gate (gitleaks + unit + all 29 E2E files in Docker, the same checks GH Actions runs), use `bun run ci:local` ... or `bun run ci:local:diff` for the diff-aware subset during fast iteration.
+
+If you're working on retrieval or any of the search/embedding/ranking surface, set `GBRAIN_CONTRIBUTOR_MODE=1` in your shell rc and use `gbrain eval replay` to gate your changes against a snapshot of real captured queries — the dev loop is documented in [`docs/eval-bench.md`](docs/eval-bench.md). Capture is **off by default** for production users (no surprise data accumulation); the env var is the contributor opt-in.
 
 PRs welcome for: new enrichment APIs, performance optimizations, additional engine backends, new skills following the conformance standard in `skills/skill-creator/SKILL.md`.
 

@@ -22,7 +22,7 @@ beforeAll(async () => {
   engine = new PGLiteEngine();
   await engine.connect({});
   await engine.initSchema();
-});
+}, 60_000);
 
 afterAll(async () => {
   await engine.disconnect();
@@ -40,11 +40,15 @@ function makeContext(): OperationContext {
     config: { engine: 'pglite' } as any,
     logger: { info: () => {}, warn: () => {}, error: () => {} },
     dryRun: false,
+    // E2E graph quality simulates local-CLI writes (auto-link / timeline run).
+    // After F7b made `remote` required this needs to be explicit.
+    remote: false,
+    sourceId: 'default',
   };
 }
 
 describe('E2E graph quality (v0.10.1 pipeline)', () => {
-  beforeEach(truncateAll);
+  beforeEach(truncateAll, 15_000);
 
   test('full pipeline: seed -> link-extract -> timeline-extract -> verify', async () => {
     // Seed 5 pages with entity refs and timeline content.
